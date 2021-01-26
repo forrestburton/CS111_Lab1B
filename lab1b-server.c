@@ -75,6 +75,49 @@ void reset_terminal(void) {  //reset to original mode
     exit(0);
 }
 
+int establish_connection(unsigned int portnum) {
+    int sock_fd;
+    int sin_size;
+    int fd;
+    struct sockaddr_in current_address;
+    struct soccaddr_in client_address;
+
+    sock_fd = socket(AF_INET, SOCK_STREAM, 0); //IPv4, TCP, default
+    if (sock_fd == -1) {
+        fprintf(stderr, "Error with creating socket: %s\n", strerror(errno));
+        exit(1);
+    }
+
+    //enter socket address info and port 
+    current_address.sin_family = AF_INET; //address family (IPv4)
+    current_address.sin_port = htons(port);  //portnumber I specify in command line
+    current_address.sin_addr.s_addr = INADDR_ANY; //which address I'm execting to receive a connection from. INADDR_ANY means I can connect to any of the client's IP Addresses
+    
+    //padding
+    memset(current_address.sin_zero, '\0', sizeof(current_address.sin_zero));
+    
+    //binding the socket to the server's IP Address and port number
+    if(bind(sock_fd, (struct sockaddr *) &current_address, sizeof(struct sockaddr)) == -1) { //(socket, server IP address, size struct)
+        fprintf(stderr, "Error binding socket to server: %s\n", strerror(errno));
+        exit(1);
+    }
+    
+    //puts socket into a passive state until connection is establihed
+    if (listen(sock_fd, 5) == -1) { //(socket, max number of connections)
+        fprintf(stderr, "Error listening for client connection: %s\n", strerror(errno));
+        exit(1);
+    } 
+    
+    sin_size = sizeof(struct sock_addr_in);
+    //accept client's connection and store the IP address. accept will be called as many clients as there are trying to connect, in this case just 1
+    fd = accept(sock_fd, (struct sockaddr*)&client_address, &sin_size);
+    if (fd == -1) {
+        fprintf(stderr, "Error accepting client connection: %s\n", strerror(errno));
+        exit(1);
+    }
+    return fd;
+}
+
 int main(int argc, char *argv[]) {
     int c;
     int c, port_number;
@@ -103,7 +146,8 @@ int main(int argc, char *argv[]) {
                 exit(1);
         }
     }
-    setup_terminal_mode();  //setup terminal and save original state
+    
+    establish_connection(port_number);
 
     //Shell option
     if (shell_option) {
