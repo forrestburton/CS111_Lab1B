@@ -12,6 +12,9 @@
 #include <string.h>
 #include <signal.h>
 #include <fcntl.h>
+#include <sys/socket.h>
+#include <sys/type.h>
+#include <netinet/in.h>
 #include <sys/wait.h>
 #include <poll.h>
 
@@ -20,11 +23,12 @@ int pipe1[2];  //to shell. pipe[0] is read end of pipe. pipe[1] is write end of 
 int pipe2[2];  //from shell
 pid_t pid;
 int shell_option = 0;
-int debug_option = 0;
 
 void reset_terminal(void);
 
 void handle_sigpipe() {
+    //Harvest the shell's completion status 
+    reset_terminal();
     exit(0);
 }
 
@@ -73,24 +77,29 @@ void reset_terminal(void) {  //reset to original mode
 
 int main(int argc, char *argv[]) {
     int c;
+    int c, port_number;
+    char* file_name;
     while(1) {
         int option_index = 0;
         static struct option long_options[] = {
             {"shell", no_argument, 0, 's' },
             {"port", required_argument, 0, 'p' },
-            {"compress", required_argument, 0, 'c' },
+            {"compress", no_argument, 0, 'c' },
             {0,     0,             0, 0 }};
         c = getopt_long(argc, argv, "", long_options, &option_index);
         if (c == -1) break;
         switch (c) {
+            case 'p':
+                port_number = atoi(optarg);
+                break;
             case 's':
                 shell_option = 1;
                 break;
-            case 'd':
-                debug_option = 1;
+            case 'c':
+               compress_option = 1;
                 break;
             default:
-                printf("Incorrect usage: accepted options are: [--shell --debug]\n");
+                printf("Incorrect usage: accepted options are: [--log=filename --port=portnum --compress]\n");
                 exit(1);
         }
     }
@@ -110,7 +119,7 @@ int main(int argc, char *argv[]) {
         }
         
         printf("got inside shell option");
-        //signal(SIGPIPE, handle_sigpipe);
+        signal(SIGPIPE, handle_sigpipe);
 
         //stdin is file descriptor 0, stdout is file descripter 1
         //Both parent and child have access to both ends of the pipe. This is how they communicate 

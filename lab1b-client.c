@@ -13,7 +13,11 @@
 #include <signal.h>
 #include <fcntl.h>
 #include <sys/wait.h>
+#include <sys/socket.h>
+#include <sys/type.h>
+#include <netinet/in.h>
 #include <poll.h>
+
 
 struct termios normal_mode;
 int pipe1[2];  //to shell. pipe[0] is read end of pipe. pipe[1] is write end of pipe
@@ -24,6 +28,8 @@ int compress_option = 0;
 void reset_terminal(void);
 
 void handle_sigpipe() {
+    //Harvest the shell's completion status 
+    reset_terminal();
     exit(0);
 }
 
@@ -70,6 +76,10 @@ void reset_terminal(void) {  //reset to original mode
     exit(0);
 }
 
+int establish_connection(char* host, unsigned int portnum) {
+    
+}
+
 int main(int argc, char *argv[]) {
     int c, port_number;
     char* file_name;
@@ -113,7 +123,7 @@ int main(int argc, char *argv[]) {
         }
         
         printf("got inside shell option");
-        //signal(SIGPIPE, handle_sigpipe);
+        signal(SIGPIPE, handle_sigpipe);
 
         //stdin is file descriptor 0, stdout is file descripter 1
         //Both parent and child have access to both ends of the pipe. This is how they communicate 
