@@ -77,7 +77,35 @@ void reset_terminal(void) {  //reset to original mode
 }
 
 int establish_connection(char* host, unsigned int portnum) {
-    
+    int sock_fd;  //file descriptor of socket
+    struct sockaddr_in server_address; //for specifying port and address of server for socket
+    struct hostent* server;
+    //creating socket
+    sock_fd = socket(AF_INET, SOCK_STREAM, 0); //(socket_family, type, protocol). AF_INET for IPv4. SOCK_STREAM for TCP. 0 for default settings
+    if (sock_fd == -1) {
+        fprintf(stderr, "Error with creating socket: %s\n", strerror(errno));
+        exit(1);
+    }
+
+    //enter socket address info and port for server
+    server_address.sin_family = AF_INET; //address family 
+    server_address.sin_port = htons(port); //taking port number and converting from host byte order to newtwork byte order. We need to convert this since we are sending over network because they use different endians 
+    server = getbyhostname(host); //get IP Address from host name
+    if(server == NULL) {
+        fprintf(stderr, "Error getting IP Address from host name: %s\n", strerror(errno));
+        exit(1);
+    }
+    memcpy(&server_address.sin_addr.s_addr, server->h_addr, server->h_length); //memcpy IP address to server_address
+    memset(server_address.sin_zero, '\0', sizeof(server_addres.sin_zero))//pad with 0's
+
+    //make proper connections of socket and addresses
+    int error_check;
+    error_check = connect(sockfd, (struct sockaddr*)&server_address, sizeof(server_address));
+    if(error_check) {
+        fprintf(stderr, "Error connecting to server: %s\n", strerror(errno));
+        exit(1);
+    }
+    return sock_fd;
 }
 
 int main(int argc, char *argv[]) {
@@ -108,6 +136,8 @@ int main(int argc, char *argv[]) {
         }
     }
     setup_terminal_mode();  //setup terminal and save original state
+
+    establish_connection("localhost", port_number);
 
     //Shell option
     if (shell_option) {

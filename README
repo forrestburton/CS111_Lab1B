@@ -3,11 +3,11 @@ EMAIL: burton.forrest10@gmail.com
 ID: 005324612
 
 The tarball contains:
-lab1b-client.c:
-lab1b-server.c: 
+lab1b-client.c: client can send keyboard data (stdin) to the server via a socket, then display back on screen. Client can also modify terminal modes
+lab1b-server.c: server receives data from client then fowards it to a shell it created. Then the output of the shell is then sent back to the client via the same socket
 Makefile: contains with a default build, clean, and dist option 
 
 Socket(7) Man page - https://man7.org/linux/man-pages/man7/socket.7.html
 How to handle SIGPIPE - https://stackoverflow.com/questions/108183/how-to-prevent-sigpipes-or-handle-them-properly
-
-
+Client Server Socket programming in C - https://www.binarytides.com/server-client-example-c-sockets-linux/
+Figuring out return values of getbyhostname - https://man7.org/linux/man-pages/man3/gethostbyname.3.html
