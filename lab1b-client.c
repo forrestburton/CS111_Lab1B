@@ -20,9 +20,6 @@
 
 
 struct termios normal_mode;
-int pipe1[2];  //to shell. pipe[0] is read end of pipe. pipe[1] is write end of pipe
-int pipe2[2];  //from shell
-pid_t pid;
 int compress_option = 0;
 
 void reset_terminal(void);
@@ -59,20 +56,6 @@ void reset_terminal(void) {  //reset to original mode
         fprintf(stderr, "Error restoring terminal mode: %s\n", strerror(errno));
         exit(1);
     } 
-    if(shell_option) {
-        int shell_status;
-        //wait for shell to exit
-        waitpid(pid, &shell_status, 0);
-        if (shell_status == -1) {
-            fprintf(stderr, "Error with child process terminating: %s\n", strerror(errno));
-            exit(1);
-        }
-
-        //print exit message
-        int signal = WTERMSIG(shell_status);
-        int status = WEXITSTATUS(shell_status);
-        fprintf(stderr, "SHELL EXIT SIGNAL=%d STATUS=%d \n", signal, status);
-    }
     exit(0);
 }
 
@@ -167,71 +150,93 @@ int main(int argc, char *argv[]) {
             }
             
             for (int i = 0; i < ret1; i++) { //for each char we read in the buffer
-                if (buffer[i] == 0x4) {
+                if (buffer[i] == 0x4) {  //If a ^D is entered on the terminal, simply pass it through to the server like any other character
                     write_check = write(1, "^D", 2*sizeof(char));
-                    if (buffer[i] == -1) {  
-                        fprintf(stderr, "Error writing to standard output 1: %s\n", strerror(errno));
+                    if (write_check == -1) {  
+                        fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
                         exit(1);
-                    }       
-                    close(pipe1[1]);
+                    }     
+                    write_check = write(sock_fd, "^D", 2*sizeof(char));
+                    if (write_check == -1) {  
+                        fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
+                        exit(1);
+                    }    
                 }
                 else if (buffer[i] == '\r' || buffer[i] == '\n') {
                     write_check = write(1, "\n", sizeof(char));
                     if (write_check == -1) {  
-                        fprintf(stderr, "Error writing to standard output 2: %s\n", strerror(errno));
+                        fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
                         exit(1);
                     }
-                    write_check = write(pipe1[1], "\n", sizeof(char));  //write to shell 
+                    write_check = write(sock_fd, "\n", sizeof(char));  //write to socket
                     if (write_check == -1) {  
-                        fprintf(stderr, "Error writing to shell Line 236: %s\n", strerror(errno));
+                        fprintf(stderr, "Error writing to socket: %s\n", strerror(errno));
                         exit(1);
                     }
                 }
-                else if (buffer[i] == 0x3) {
+                else if (buffer[i] == 0x3) { //if a ^C is entered on the terminal, simply pass it through to the server like any other character.
                     write_check = write(1, "^C", 2*sizeof(char));
                     if (write_check == -1) {  
-                        fprintf(stderr, "Error writing to standard output 3: %s\n", strerror(errno));
+                        fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
                         exit(1);
                     }
-                    kill(pid, SIGINT); //kill child process
+                    write_check = write(sock_fd, "^C", 2*sizeof(char));
+                    if (write_check == -1) {  
+                        fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
+                        exit(1);
+                    }
                 }
                 else {
                     write_check = write(1, &buffer[i], sizeof(char));
                     if (write_check == -1) {  
-                        fprintf(stderr, "Error writing to standard output 4: %s\n", strerror(errno));
+                        fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
                         exit(1);
                     }
-                    write_check = write(pipe1[1], &buffer[i], sizeof(char)); //write to shell 
+                    write_check = write(sock_fd, &buffer[i], sizeof(char)); //write to socket
                     if (write_check == -1) {  
-                        fprintf(stderr, "Error writing to shell Line 256: %s\n", strerror(errno));
+                        fprintf(stderr, "Error writing to socket: %s\n", strerror(errno));
                         exit(1);
                     }
                 }
             }
         }
 
-        //Read input from shell
+        //Read input from socket
         if (poll_event[1].revents & POLLIN) {
             char buf[256];
-            ssize_t ret2 = read(pipe2[0], buf, sizeof(char)*256);
+            ssize_t ret2 = read(sock_fd, buf, sizeof(char)*256);
             if (ret2 == -1) {  
-                fprintf(stderr, "Error reading from shell: %s\n", strerror(errno));
+                fprintf(stderr, "Error reading from socket: %s\n", strerror(errno));
                 exit(1);
             }
             for (int i = 0; i < ret2; i++) {
-                if (buf[i] == '\n') {
-                    write_check = write(1, "\r\n", sizeof(char)*2);
+                if (buf[i] == 0x4) {  //If a ^D is entered on the terminal, simply pass it through to the server like any other character
+                    write_check = write(1, "^D", 2*sizeof(char));
                     if (write_check == -1) {  
-                        fprintf(stderr, "Error writing to standard output 5: %s\n", strerror(errno));
+                        fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
                         exit(1);
-                    }    
-                } 
+                    }     
+                }
+                else if (buf[i] == '\r' || buf[i] == '\n') {
+                    write_check = write(1, "\n", sizeof(char));
+                    if (write_check == -1) {  
+                        fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
+                        exit(1);
+                    }
+                }
+                else if (buf[i] == 0x3) { //if a ^C is entered on the terminal, simply pass it through to the server like any other character.
+                    write_check = write(1, "^C", 2*sizeof(char));
+                    if (write_check == -1) {  
+                        fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
+                        exit(1);
+                    }
+                }
                 else {
                     write_check = write(1, &buf[i], sizeof(char));
                     if (write_check == -1) {  
-                        fprintf(stderr, "Error writing to standard output 6: %s\n", strerror(errno));
+                        fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
                         exit(1);
-                    }    
+                    }
                 }
             }
         }
@@ -240,14 +245,46 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "stdin error: %s\n", strerror(errno));
             exit(1);
         }
-        if (poll_event[1].revents & (POLLHUP | POLLERR)) {
-            fprintf(stderr, "shell input error: %s\n", strerror(errno));
+        if (poll_event[1].revents & (POLLHUP | POLLERR)) {  //read every last byte from socket_fd, write to stdout, restore terminal and exit
+            fprintf(stderr, "socket input error: %s\n", strerror(errno));
+                        char buf[256];
+            ssize_t ret2 = read(sock_fd, buf, sizeof(char)*256);
+            if (ret2 == -1) {  
+                fprintf(stderr, "Error reading from socket: %s\n", strerror(errno));
+                exit(1);
+            }
+            for (int i = 0; i < ret2; i++) {
+                if (buf[i] == 0x4) {  //If a ^D is entered on the terminal, simply pass it through to the server like any other character
+                    write_check = write(1, "^D", 2*sizeof(char));
+                    if (write_check == -1) {  
+                        fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
+                        exit(1);
+                    }     
+                }
+                else if (buf[i] == '\r' || buf[i] == '\n') {
+                    write_check = write(1, "\n", sizeof(char));
+                    if (write_check == -1) {  
+                        fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
+                        exit(1);
+                    }
+                }
+                else if (buf[i] == 0x3) { //if a ^C is entered on the terminal, simply pass it through to the server like any other character.
+                    write_check = write(1, "^C", 2*sizeof(char));
+                    if (write_check == -1) {  
+                        fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
+                        exit(1);
+                    }
+                }
+                else {
+                    write_check = write(1, &buf[i], sizeof(char));
+                    if (write_check == -1) {  
+                        fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
+                        exit(1);
+                    }
+                }
+            }
             exit(1);
         }
     }
-
-    int exit_status;
-    waitpid(pid, &exit_status, 0);  //wait for child process to finish
-    printf("Child process is exiting. Exit code: %d\n", WEXITSTATUS(exit_status));
     exit(0);   
 }
