@@ -14,7 +14,7 @@
 #include <fcntl.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
-#include <sys/type.h>
+#include <sys/types.h>
 #include <netinet/in.h>
 #include <poll.h>
 #include <zlib.h>
@@ -53,7 +53,7 @@ void reset_terminal(void) {  //reset to original mode
     exit(0);
 }
 
-int establish_connection(char* host, unsigned int portnum) {
+int establish_connection(char* host, unsigned int port_num) {
     int sock_fd;  //file descriptor of socket
     struct sockaddr_in server_address; //for specifying port and address of server for socket
     struct hostent* server;
@@ -66,14 +66,14 @@ int establish_connection(char* host, unsigned int portnum) {
 
     //enter socket address info and port for server
     server_address.sin_family = AF_INET; //address family 
-    server_address.sin_port = htons(port); //taking port number and converting from host byte order to newtwork byte order. We need to convert this since we are sending over network because they use different endians 
-    server = getbyhostname(host); //get IP Address from host name
+    server_address.sin_port = htons(port_num); //taking port number and converting from host byte order to newtwork byte order. We need to convert this since we are sending over network because they use different endians 
+    server = gethostname(host); //get IP Address from host name
     if(server == NULL) {
         fprintf(stderr, "Error getting IP Address from host name: %s\n", strerror(errno));
         exit(1);
     }
     memcpy(&server_address.sin_addr.s_addr, server->h_addr, server->h_length); //memcpy IP address to server_address
-    memset(server_address.sin_zero, '\0', sizeof(server_addres.sin_zero))//pad with 0's
+    memset(server_address.sin_zero, '\0', sizeof(server_address.sin_zero));//pad with 0's
 
     //make proper connections of socket and addresses
     int error_check;

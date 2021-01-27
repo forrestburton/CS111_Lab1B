@@ -6,6 +6,12 @@ default:
 		gcc -g -Wall -Wextra -lz -o lab1b-client lab1b-client.c
 		gcc -g -Wall -Wextra -lz -o lab1b-server lab1b-server.c
 
+client:
+		gcc -g -Wall -Wextra -lz -o lab1b-client lab1b-client.c
+
+server:
+		gcc -g -Wall -Wextra -lz -o lab1b-server lab1b-server.c
+
 clean:
 		rm -f lab1b-client lab1b-server *tar.gz
 

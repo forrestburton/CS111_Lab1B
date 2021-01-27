@@ -13,7 +13,7 @@
 #include <signal.h>
 #include <fcntl.h>
 #include <sys/socket.h>
-#include <sys/type.h>
+#include <sys/types.h>
 #include <netinet/in.h>
 #include <sys/wait.h>
 #include <poll.h>
@@ -24,6 +24,7 @@ int pipe_to_shell[2];  //to shell. pipe[0] is read end of pipe. pipe[1] is write
 int pipe_to_server[2];  //from shell
 pid_t pid;
 int sock_fd;
+int compress_option;
 
 void reset_terminal(void);
 
@@ -76,11 +77,11 @@ void reset_terminal(void) {  //reset to original mode
     exit(0);
 }
 
-int establish_connection(unsigned int portnum) {
+int establish_connection(unsigned int port_num) {
     int sin_size;
     int fd;
     struct sockaddr_in current_address;
-    struct soccaddr_in client_address;
+    struct sockaddr_in client_address;
 
     sock_fd = socket(AF_INET, SOCK_STREAM, 0); //IPv4, TCP, default
     if (sock_fd == -1) {
@@ -90,7 +91,7 @@ int establish_connection(unsigned int portnum) {
 
     //enter socket address info and port 
     current_address.sin_family = AF_INET; //address family (IPv4)
-    current_address.sin_port = htons(port);  //portnumber I specify in command line
+    current_address.sin_port = htons(port_number);  //portnumber I specify in command line
     current_address.sin_addr.s_addr = INADDR_ANY; //which address I'm execting to receive a connection from. INADDR_ANY means I can connect to any of the client's IP Addresses
     
     //padding
@@ -108,7 +109,7 @@ int establish_connection(unsigned int portnum) {
         exit(1);
     } 
     
-    sin_size = sizeof(struct sock_addr_in);
+    sin_size = sizeof struct sock_addr_in;
     //accept client's connection and store the IP address. accept will be called as many clients as there are trying to connect, in this case just 1
     fd = accept(sock_fd, (struct sockaddr*)&client_address, &sin_size);
     if (fd == -1) {
@@ -120,7 +121,7 @@ int establish_connection(unsigned int portnum) {
 
 int main(int argc, char *argv[]) {
     int c;
-    int c, port_number;
+    int port_number;
     char* file_name;
     while(1) {
         int option_index = 0;
@@ -134,9 +135,6 @@ int main(int argc, char *argv[]) {
         switch (c) {
             case 'p':
                 port_number = atoi(optarg);
-                break;
-            case 's':
-                shell_option = 1;
                 break;
             case 'c':
                compress_option = 1;
