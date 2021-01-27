@@ -147,7 +147,7 @@ int main(int argc, char *argv[]) {
         }
     }
     
-    establish_connection(port_number);
+    int sock_fd = establish_connection(port_number);
 
     //Shell option
     if (shell_option) {

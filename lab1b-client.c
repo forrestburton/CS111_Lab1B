@@ -135,247 +135,119 @@ int main(int argc, char *argv[]) {
                 exit(1);
         }
     }
-    setup_terminal_mode();  //setup terminal and save original state
 
-    establish_connection("localhost", port_number);
+    int sock_fd = establish_connection("localhost", port_number); //don't need to error check here, I already do it in my function
 
-    //Shell option
-    if (shell_option) {
-        int ret1 = pipe(pipe1);  //parent->child (terminal->shell)
-        int ret2 = pipe(pipe2);  //child->parent (shell->terminal)
-        if (ret1 == -1) {
-            fprintf(stderr, "Error when piping parent->child: %s\n", strerror(errno));
+    setup_terminal_mode();  //setup terminal to non-canonical, no echo mode
+
+    //Poll blocks and returns when: one set of file descriptors is ready for I/O or a specified time has passed 
+    struct pollfd poll_event[2];
+    poll_event[0].fd = 0;  //read from stdin
+    poll_event[0].events = POLLIN + POLLHUP + POLLERR;
+
+    poll_event[1].fd = sock_fd; //read in from socket
+    poll_event[1].events = POLLIN + POLLHUP + POLLERR;
+
+    int poll_val;
+    int write_check;
+
+    while(1) {
+        poll_val = poll(poll_event, 2, -1);
+        if (poll_val < 0) {
+            fprintf(stderr, "Error polling: %s\n", strerror(errno));
             exit(1);
         }
-        if (ret2 == -1) {
-            fprintf(stderr, "Error when piping child->parent: %s\n", strerror(errno));
-            exit(1);
-        }
-        
-        printf("got inside shell option");
-        signal(SIGPIPE, handle_sigpipe);
-
-        //stdin is file descriptor 0, stdout is file descripter 1
-        //Both parent and child have access to both ends of the pipe. This is how they communicate 
-        pid = fork(); //create a child process from main
-        if (pid == -1) {
-            fprintf(stderr, "Error when forking main: %s\n", strerror(errno));
-            exit(1);
-        }
-        else if (pid == 0) {  //child process will have return value of 0. Output is by default nondeterministic. We don't know order of execution so we need poll
-            printf("made it inside child process");
-
-            //close ends of pipe we aren't using
-            if (close(pipe1[1]) == -1) { //close writing in pipe to shell 
-                fprintf(stderr, "Error when closing file descriptor: %s\n", strerror(errno));
-                exit(1);
-            }  
-            if (close(pipe2[0]) == -1) { //close reading in pipe from shell
-                fprintf(stderr, "Error when closing file descriptor: %s\n", strerror(errno));
-                exit(1);
-            }
-            
-            //dup creates a copy of the file descriptor oldfd, dup2 allows us to specify file descriptor to be used 
-            if (dup2(pipe1[0], 0) == -1) { //read stdin to shell(child). so now fd 0 points to the read of the shell
-                fprintf(stderr, "Error when copying file descriptor: %s\n", strerror(errno));
-                exit(1);
-            } 
-            if (close(pipe1[0]) == -1) {  
-                fprintf(stderr, "Error when closing file descriptor: %s\n", strerror(errno));
-                exit(1);
-            }  
-
-            if (dup2(pipe2[1], 1) == -1) { //write shell to stdout. fd 1 
-                fprintf(stderr, "Error when copying file descriptor: %s\n", strerror(errno));
-                exit(1);
-            }
-            if (dup2(pipe2[1], 2) == -1) { //write shell to stderr. fd 2
-                fprintf(stderr, "Error when copying file descriptor: %s\n", strerror(errno));
-                exit(1);    
-            }
-            
-            if (close(pipe2[1]) == -1) { 
-                fprintf(stderr, "Error when closing file descriptor: %s\n", strerror(errno));
-                exit(1);
-            }   
-
-            int ret;
-            char* args_exec[2];
-            char shell_path[] = "/bin/bash";
-            args_exec[0] = shell_path;
-            args_exec[1] = NULL;
-            ret = execvp("/bin/bash", args_exec);  //executing a new (shell) program: /bin/bash. exec(3) replaces current image process with new one
-            if (ret == -1) {
-                fprintf(stderr, "Error when executing execvp in child process: %s\n", strerror(errno));
-                exit(1);
-            }
-        }
-        else if (pid > 0) {  //parent process will have return value of > 0
-            printf("made it inside parent process");
-            //close ends of pipe we aren't using
-            if (close(pipe1[0]) == -1) { //closing read for to shell
-                fprintf(stderr, "Error when closing file descriptor: %s\n", strerror(errno));
-                exit(1);
-            }  
-            if (close(pipe2[1]) == -1) { //closing write for from shell 
-                fprintf(stderr, "Error when closing file descriptor: %s\n", strerror(errno));
-                exit(1);
-            }
-
-            //Poll blocks and returns when: one set of file descriptors is ready for I/O or a specified time has passed 
-            struct pollfd poll_event[2];
-            poll_event[0].fd = 0;  //stdin
-            poll_event[0].events = POLLIN + POLLHUP + POLLERR;
-
-            poll_event[1].fd = pipe2[0]; //read in from shell
-            poll_event[1].events = POLLIN + POLLHUP + POLLERR;
-
-            int poll_val;
-            int write_check;
-
-            while(1) {
-                poll_val = poll(poll_event, 2, -1);
-                if (poll_val < 0) {
-                    fprintf(stderr, "Error polling: %s\n", strerror(errno));
-                    exit(1);
-                }
-                //Read input from stdin
-                if (poll_event[0].revents & POLLIN) { 
-                    char buffer[256];
-                    ssize_t ret1 = read(0, buffer, sizeof(char)*256);  //parent and child each have copies of file descripters. In parent 0 still maps to stdin
-                    if (ret1 == -1) {  
-                        fprintf(stderr, "Error reading from standard input: %s\n", strerror(errno));
-                        exit(1);
-                    }
-                    
-                    for (int i = 0; i < ret1; i++) { //for each char we read in the buffer
-                        if (buffer[i] == 0x4) {
-                            write_check = write(1, "^D", 2*sizeof(char));
-                            if (buffer[i] == -1) {  
-                                fprintf(stderr, "Error writing to standard output 1: %s\n", strerror(errno));
-                                exit(1);
-                            }       
-                            close(pipe1[1]);
-                        }
-                        else if (buffer[i] == '\r' || buffer[i] == '\n') {
-                            write_check = write(1, "\n", sizeof(char));
-                            if (write_check == -1) {  
-                                fprintf(stderr, "Error writing to standard output 2: %s\n", strerror(errno));
-                                exit(1);
-                            }
-                            write_check = write(pipe1[1], "\n", sizeof(char));  //write to shell 
-                            if (write_check == -1) {  
-                                fprintf(stderr, "Error writing to shell Line 236: %s\n", strerror(errno));
-                                exit(1);
-                            }
-                        }
-                        else if (buffer[i] == 0x3) {
-                            write_check = write(1, "^C", 2*sizeof(char));
-                            if (write_check == -1) {  
-                                fprintf(stderr, "Error writing to standard output 3: %s\n", strerror(errno));
-                                exit(1);
-                            }
-                            kill(pid, SIGINT); //kill child process
-                        }
-                        else {
-                            write_check = write(1, &buffer[i], sizeof(char));
-                            if (write_check == -1) {  
-                                fprintf(stderr, "Error writing to standard output 4: %s\n", strerror(errno));
-                                exit(1);
-                            }
-                            write_check = write(pipe1[1], &buffer[i], sizeof(char)); //write to shell 
-                            if (write_check == -1) {  
-                                fprintf(stderr, "Error writing to shell Line 256: %s\n", strerror(errno));
-                                exit(1);
-                            }
-                        }
-                    }
-                }
-
-                //Read input from shell
-                if (poll_event[1].revents & POLLIN) {
-                    char buf[256];
-                    ssize_t ret2 = read(pipe2[0], buf, sizeof(char)*256);
-                    if (ret2 == -1) {  
-                        fprintf(stderr, "Error reading from shell: %s\n", strerror(errno));
-                        exit(1);
-                    }
-                    for (int i = 0; i < ret2; i++) {
-                        if (buf[i] == '\n') {
-                            write_check = write(1, "\r\n", sizeof(char)*2);
-                            if (write_check == -1) {  
-                                fprintf(stderr, "Error writing to standard output 5: %s\n", strerror(errno));
-                                exit(1);
-                            }    
-                        } 
-                        else {
-                            write_check = write(1, &buf[i], sizeof(char));
-                            if (write_check == -1) {  
-                                fprintf(stderr, "Error writing to standard output 6: %s\n", strerror(errno));
-                                exit(1);
-                            }    
-                        }
-                    }
-                }
-
-                if (poll_event[0].revents & (POLLHUP | POLLERR)) {
-                    fprintf(stderr, "stdin error: %s\n", strerror(errno));
-                    exit(1);
-                }
-                if (poll_event[1].revents & (POLLHUP | POLLERR)) {
-                    fprintf(stderr, "shell input error: %s\n", strerror(errno));
-                    exit(1);
-                }
-            }
-
-            int exit_status;
-            waitpid(pid, &exit_status, 0);  //wait for child process to finish
-            printf("Child process is exiting. Exit code: %d\n", WEXITSTATUS(exit_status));
-            exit(0);   
-        }
-    }
-    else {
-        //Default execution(no options given)
-        char buffer;
-        ssize_t ret;
-        while(1) {   //read (ASCII) input from keyboard into buffer
-            ret = read(0, &buffer, sizeof(char));  //read bytes from stdin
-            if (ret == -1) {  
+        //Read input from stdin
+        if (poll_event[0].revents & POLLIN) { 
+            char buffer[256];
+            ssize_t ret1 = read(0, buffer, sizeof(char)*256);  //parent and child each have copies of file descripters. In parent 0 still maps to stdin
+            if (ret1 == -1) {  
                 fprintf(stderr, "Error reading from standard input: %s\n", strerror(errno));
                 exit(1);
             }
-
-            for (int i = 0; i < ret; i++) { //for each char we read in the buffer
-                if (buffer == 0x4) {
-                    ret = write(1, "^D", 2*sizeof(char));
-                    if (ret == -1) {  
-                        fprintf(stderr, "Error writing to standard output 7: %s\n", strerror(errno));
+            
+            for (int i = 0; i < ret1; i++) { //for each char we read in the buffer
+                if (buffer[i] == 0x4) {
+                    write_check = write(1, "^D", 2*sizeof(char));
+                    if (buffer[i] == -1) {  
+                        fprintf(stderr, "Error writing to standard output 1: %s\n", strerror(errno));
                         exit(1);
                     }       
-                    exit(0);
+                    close(pipe1[1]);
                 }
-                else if (buffer == '\r' || buffer == '\n') {
-                    ret = write(1, "\r\n", 2*sizeof(char));
-                    if (ret == -1) {  
-                        fprintf(stderr, "Error writing to standard output 8: %s\n", strerror(errno));
+                else if (buffer[i] == '\r' || buffer[i] == '\n') {
+                    write_check = write(1, "\n", sizeof(char));
+                    if (write_check == -1) {  
+                        fprintf(stderr, "Error writing to standard output 2: %s\n", strerror(errno));
+                        exit(1);
+                    }
+                    write_check = write(pipe1[1], "\n", sizeof(char));  //write to shell 
+                    if (write_check == -1) {  
+                        fprintf(stderr, "Error writing to shell Line 236: %s\n", strerror(errno));
                         exit(1);
                     }
                 }
-                else if (buffer == 0x3) {
-                    ret = write(1, "^C", 2*sizeof(char));
-                    if (ret == -1) {  
-                        fprintf(stderr, "Error writing to standard output 9 : %s\n", strerror(errno));
+                else if (buffer[i] == 0x3) {
+                    write_check = write(1, "^C", 2*sizeof(char));
+                    if (write_check == -1) {  
+                        fprintf(stderr, "Error writing to standard output 3: %s\n", strerror(errno));
                         exit(1);
                     }
+                    kill(pid, SIGINT); //kill child process
                 }
                 else {
-                    ret = write(1, &buffer, sizeof(char));
-                    if (ret == -1) {  
-                        fprintf(stderr, "Error writing to standard output 10: %s\n", strerror(errno));
+                    write_check = write(1, &buffer[i], sizeof(char));
+                    if (write_check == -1) {  
+                        fprintf(stderr, "Error writing to standard output 4: %s\n", strerror(errno));
+                        exit(1);
+                    }
+                    write_check = write(pipe1[1], &buffer[i], sizeof(char)); //write to shell 
+                    if (write_check == -1) {  
+                        fprintf(stderr, "Error writing to shell Line 256: %s\n", strerror(errno));
                         exit(1);
                     }
                 }
             }
         }
+
+        //Read input from shell
+        if (poll_event[1].revents & POLLIN) {
+            char buf[256];
+            ssize_t ret2 = read(pipe2[0], buf, sizeof(char)*256);
+            if (ret2 == -1) {  
+                fprintf(stderr, "Error reading from shell: %s\n", strerror(errno));
+                exit(1);
+            }
+            for (int i = 0; i < ret2; i++) {
+                if (buf[i] == '\n') {
+                    write_check = write(1, "\r\n", sizeof(char)*2);
+                    if (write_check == -1) {  
+                        fprintf(stderr, "Error writing to standard output 5: %s\n", strerror(errno));
+                        exit(1);
+                    }    
+                } 
+                else {
+                    write_check = write(1, &buf[i], sizeof(char));
+                    if (write_check == -1) {  
+                        fprintf(stderr, "Error writing to standard output 6: %s\n", strerror(errno));
+                        exit(1);
+                    }    
+                }
+            }
+        }
+
+        if (poll_event[0].revents & (POLLHUP | POLLERR)) {
+            fprintf(stderr, "stdin error: %s\n", strerror(errno));
+            exit(1);
+        }
+        if (poll_event[1].revents & (POLLHUP | POLLERR)) {
+            fprintf(stderr, "shell input error: %s\n", strerror(errno));
+            exit(1);
+        }
     }
+
+    int exit_status;
+    waitpid(pid, &exit_status, 0);  //wait for child process to finish
+    printf("Child process is exiting. Exit code: %d\n", WEXITSTATUS(exit_status));
+    exit(0);   
 }
