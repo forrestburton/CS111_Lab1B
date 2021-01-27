@@ -23,7 +23,7 @@ struct termios normal_mode;
 int pipe_to_shell[2];  //to shell. pipe[0] is read end of pipe. pipe[1] is write end of pipe
 int pipe_to_server[2];  //from shell
 pid_t pid;
-int shell_option = 0;
+int sock_fd;
 
 void reset_terminal(void);
 
@@ -59,25 +59,24 @@ void reset_terminal(void) {  //reset to original mode
         fprintf(stderr, "Error restoring terminal mode: %s\n", strerror(errno));
         exit(1);
     } 
-    if(shell_option) {
-        int shell_status;
-        //wait for shell to exit
-        waitpid(pid, &shell_status, 0);
-        if (shell_status == -1) {
-            fprintf(stderr, "Error with child process terminating: %s\n", strerror(errno));
-            exit(1);
-        }
-
-        //print exit message
-        int signal = WTERMSIG(shell_status);
-        int status = WEXITSTATUS(shell_status);
-        fprintf(stderr, "SHELL EXIT SIGNAL=%d STATUS=%d \n", signal, status);
+    
+    int shell_status;
+    //wait for shell to exit
+    waitpid(pid, &shell_status, 0);
+    if (shell_status == -1) {
+        fprintf(stderr, "Error with child process terminating: %s\n", strerror(errno));
+        exit(1);
     }
+
+    //print exit message
+    int signal = WTERMSIG(shell_status);
+    int status = WEXITSTATUS(shell_status);
+    fprintf(stderr, "SHELL EXIT SIGNAL=%d STATUS=%d \n", signal, status);
+    close(sock_fd);
     exit(0);
 }
 
 int establish_connection(unsigned int portnum) {
-    int sock_fd;
     int sin_size;
     int fd;
     struct sockaddr_in current_address;
@@ -148,7 +147,7 @@ int main(int argc, char *argv[]) {
         }
     }
     
-    int sock_fd = establish_connection(port_number);
+    sock_fd  = establish_connection(port_number);
 
     int ret1 = pipe(pipe_to_shell);  //parent->child (server->shell)
     int ret2 = pipe(pipe_to_server);  //child->parent (shell->server)
