@@ -17,18 +17,12 @@
 #include <sys/type.h>
 #include <netinet/in.h>
 #include <poll.h>
-
+#include <zlib.h>
 
 struct termios normal_mode;
 int compress_option = 0;
 
 void reset_terminal(void);
-
-void handle_sigpipe() {
-    //Harvest the shell's completion status 
-    reset_terminal();
-    exit(0);
-}
 
 void setup_terminal_mode(void) {
     //save current mode so we can restore it at the end 
