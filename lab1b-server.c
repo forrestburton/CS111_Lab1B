@@ -91,7 +91,7 @@ int establish_connection(unsigned int port_num) {
 
     //enter socket address info and port 
     current_address.sin_family = AF_INET; //address family (IPv4)
-    current_address.sin_port = htons(port_number);  //portnumber I specify in command line
+    current_address.sin_port = htons(port_num);  //portnumber I specify in command line
     current_address.sin_addr.s_addr = INADDR_ANY; //which address I'm execting to receive a connection from. INADDR_ANY means I can connect to any of the client's IP Addresses
     
     //padding
@@ -109,7 +109,7 @@ int establish_connection(unsigned int port_num) {
         exit(1);
     } 
     
-    sin_size = sizeof struct sock_addr_in;
+    sin_size = sizeof (struct sockaddr_in);
     //accept client's connection and store the IP address. accept will be called as many clients as there are trying to connect, in this case just 1
     fd = accept(sock_fd, (struct sockaddr*)&client_address, &sin_size);
     if (fd == -1) {

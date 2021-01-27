@@ -15,6 +15,7 @@
 #include <sys/wait.h>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <netdb.h>
 #include <netinet/in.h>
 #include <poll.h>
 #include <zlib.h>
@@ -67,7 +68,7 @@ int establish_connection(char* host, unsigned int port_num) {
     //enter socket address info and port for server
     server_address.sin_family = AF_INET; //address family 
     server_address.sin_port = htons(port_num); //taking port number and converting from host byte order to newtwork byte order. We need to convert this since we are sending over network because they use different endians 
-    server = gethostname(host); //get IP Address from host name
+    server = gethostbyname(host); //get IP Address from host name
     if(server == NULL) {
         fprintf(stderr, "Error getting IP Address from host name: %s\n", strerror(errno));
         exit(1);
@@ -77,7 +78,7 @@ int establish_connection(char* host, unsigned int port_num) {
 
     //make proper connections of socket and addresses
     int error_check;
-    error_check = connect(sockfd, (struct sockaddr*)&server_address, sizeof(server_address));
+    error_check = connect(sock_fd, (struct sockaddr*)&server_address, sizeof(server_address));
     if(error_check) {
         fprintf(stderr, "Error connecting to server: %s\n", strerror(errno));
         exit(1);
