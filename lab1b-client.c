@@ -54,6 +54,10 @@ void reset_terminal(void) {  //reset to original mode
     exit(0);
 }
 
+void read_from_socket(int sock_fd) {
+    
+}
+
 int establish_connection(char* host, unsigned int port_num) {
     int sock_fd;  //file descriptor of socket
     struct sockaddr_in server_address; //for specifying port and address of server for socket
@@ -87,15 +91,14 @@ int establish_connection(char* host, unsigned int port_num) {
 }
 
 int main(int argc, char *argv[]) {
-    printf("Entered main client");
     int c;
     int port_number = -1;
     char* file_name;
     while(1) {
         int option_index = 0;
         static struct option long_options[] = {
-            {"log", required_argument, 0, 'l' },
             {"port", required_argument, 0, 'p' },
+            {"log", required_argument, 0, 'l' },
             {"compress", no_argument, 0, 'c' },
             {0,     0,             0, 0 }};
         c = getopt_long(argc, argv, "p:l:c", long_options, &option_index);
@@ -116,16 +119,14 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    if (port_number < 1025) {
-        fprintf(stderr, "Client error, specify port number greater than 1024: %s\n", strerror(errno));
+    if (port_number == -1) {
+        fprintf(stderr, "Client error, specify port number: %s\n", strerror(errno));
         exit(1);
     }
 
     setup_terminal_mode();  //setup terminal to non-canonical, no echo mode
 
-    printf("before connect function");
     int sock_fd = establish_connection("localhost", port_number); //don't need to error check here, I already do it in my function
-    printf("after connect function");
 
     //Poll blocks and returns when: one set of file descriptors is ready for I/O or a specified time has passed 
     struct pollfd poll_event[2];
@@ -144,7 +145,7 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "Error polling: %s\n", strerror(errno));
             exit(1);
         }
-        //printf("inside while loop");
+
         //Read input from stdin
         if (poll_event[0].revents & POLLIN) { 
             char buffer[256];
@@ -252,7 +253,7 @@ int main(int argc, char *argv[]) {
         }
         if (poll_event[1].revents & (POLLHUP | POLLERR)) {  //read every last byte from socket_fd, write to stdout, restore terminal and exit
             fprintf(stderr, "socket input error: %s\n", strerror(errno));
-                        char buf[256];
+            char buf[256];
             ssize_t ret2 = read(sock_fd, buf, sizeof(char)*256);
             if (ret2 == -1) {  
                 fprintf(stderr, "Error reading from socket: %s\n", strerror(errno));

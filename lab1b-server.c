@@ -150,7 +150,7 @@ int main(int argc, char *argv[]) {
     }
 
     if (port_number < 1025) {
-        fprintf(stderr, "Server rrror, specify port number greater than 1024: %s\n", strerror(errno));
+        fprintf(stderr, "Server error, specify port number greater than 1024: %s\n", strerror(errno));
         exit(1);
     }
     
