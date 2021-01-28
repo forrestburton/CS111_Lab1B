@@ -78,7 +78,7 @@ void reset_terminal(void) {  //reset to original mode
 }
 
 int establish_connection(unsigned int port_num) {
-    int sin_size;
+    unsigned int sin_size;
     int fd;
     struct sockaddr_in current_address;
     struct sockaddr_in client_address;
@@ -116,12 +116,16 @@ int establish_connection(unsigned int port_num) {
         fprintf(stderr, "Error accepting client connection: %s\n", strerror(errno));
         exit(1);
     }
+    else {
+        printf("Succesfully Connected");
+    }
     return fd;
 }
 
 int main(int argc, char *argv[]) {
+    printf("Entered main server");
     int c;
-    int port_number;
+    int port_number = -1;
     char* file_name;
     while(1) {
         int option_index = 0;
@@ -130,22 +134,29 @@ int main(int argc, char *argv[]) {
             {"port", required_argument, 0, 'p' },
             {"compress", no_argument, 0, 'c' },
             {0,     0,             0, 0 }};
-        c = getopt_long(argc, argv, "", long_options, &option_index);
+        c = getopt_long(argc, argv, "p:c", long_options, &option_index);
         if (c == -1) break;
         switch (c) {
             case 'p':
                 port_number = atoi(optarg);
                 break;
             case 'c':
-               compress_option = 1;
+                compress_option = 1;
                 break;
             default:
                 printf("Incorrect usage: accepted options are: [--log=filename --port=portnum --compress]\n");
                 exit(1);
         }
     }
+
+    if (port_number < 1025) {
+        fprintf(stderr, "Server rrror, specify port number greater than 1024: %s\n", strerror(errno));
+        exit(1);
+    }
     
+    printf("before connect function serv");
     sock_fd  = establish_connection(port_number);
+    printf("after connect function serv");
 
     int ret1 = pipe(pipe_to_shell);  //parent->child (server->shell)
     int ret2 = pipe(pipe_to_server);  //child->parent (shell->server)

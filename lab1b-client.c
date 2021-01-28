@@ -87,7 +87,9 @@ int establish_connection(char* host, unsigned int port_num) {
 }
 
 int main(int argc, char *argv[]) {
-    int c, port_number;
+    printf("Entered main client");
+    int c;
+    int port_number = -1;
     char* file_name;
     while(1) {
         int option_index = 0;
@@ -96,7 +98,7 @@ int main(int argc, char *argv[]) {
             {"port", required_argument, 0, 'p' },
             {"compress", no_argument, 0, 'c' },
             {0,     0,             0, 0 }};
-        c = getopt_long(argc, argv, "", long_options, &option_index);
+        c = getopt_long(argc, argv, "p:l:c", long_options, &option_index);
         if (c == -1) break;
         switch (c) {
             case 'p':
@@ -114,9 +116,16 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    int sock_fd = establish_connection("localhost", port_number); //don't need to error check here, I already do it in my function
+    if (port_number < 1025) {
+        fprintf(stderr, "Client error, specify port number greater than 1024: %s\n", strerror(errno));
+        exit(1);
+    }
 
     setup_terminal_mode();  //setup terminal to non-canonical, no echo mode
+
+    printf("before connect function");
+    int sock_fd = establish_connection("localhost", port_number); //don't need to error check here, I already do it in my function
+    printf("after connect function");
 
     //Poll blocks and returns when: one set of file descriptors is ready for I/O or a specified time has passed 
     struct pollfd poll_event[2];
@@ -135,6 +144,7 @@ int main(int argc, char *argv[]) {
             fprintf(stderr, "Error polling: %s\n", strerror(errno));
             exit(1);
         }
+        //printf("inside while loop");
         //Read input from stdin
         if (poll_event[0].revents & POLLIN) { 
             char buffer[256];
@@ -158,7 +168,7 @@ int main(int argc, char *argv[]) {
                     }    
                 }
                 else if (buffer[i] == '\r' || buffer[i] == '\n') {
-                    write_check = write(1, "\n", sizeof(char));
+                    write_check = write(1, "\r\n", 2*sizeof(char));
                     if (write_check == -1) {  
                         fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
                         exit(1);
@@ -213,7 +223,7 @@ int main(int argc, char *argv[]) {
                     }     
                 }
                 else if (buf[i] == '\r' || buf[i] == '\n') {
-                    write_check = write(1, "\n", sizeof(char));
+                    write_check = write(1, "\r\n", 2*sizeof(char));
                     if (write_check == -1) {  
                         fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
                         exit(1);
@@ -257,7 +267,7 @@ int main(int argc, char *argv[]) {
                     }     
                 }
                 else if (buf[i] == '\r' || buf[i] == '\n') {
-                    write_check = write(1, "\n", sizeof(char));
+                    write_check = write(1, "\r\n", 2*sizeof(char));
                     if (write_check == -1) {  
                         fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
                         exit(1);
