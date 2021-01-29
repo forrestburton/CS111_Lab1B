@@ -135,7 +135,7 @@ int establish_connection(char* host, unsigned int port_num) {
 int main(int argc, char *argv[]) {
     int c;
     int port_number = -1;
-    char* file_name;
+    char* file_name = NULL;
     while(1) {
         int option_index = 0;
         static struct option long_options[] = {
@@ -151,6 +151,10 @@ int main(int argc, char *argv[]) {
                 break;
             case 'l':
                 file_name = optarg;
+                if (file_name == NULL) {
+                    fprintf(stderr, "Error: specify a valid file\n");
+                    exit(1);
+                }
                 break;
             case 'c':
                compress_option = 1;
@@ -195,6 +199,27 @@ int main(int argc, char *argv[]) {
             if (ret1 == -1) {  
                 fprintf(stderr, "Error reading from standard input: %s\n", strerror(errno));
                 exit(1);
+            }
+
+            if (compress_option) {
+                 char compress_output[1];
+
+                //1) initialize a compression stream
+                z_stream stream;
+                stream.zalloc = Z_NULL;  //set to Z_NULL for default routines
+                stream.zfree = Z_NULL;
+                stream.opaque = Z_NULL;
+                int z_result = deflateInit(&stream, Z_DEFAULT_COMPRESSION);  //(ptr to struct, default compression level)
+                if (z_result != Z_OK) {
+                    fprintf(stderr, "Client error, failed to deflate stream for compression: %s\n", strerror(errno));
+                    exit(1);
+                }
+
+                //2) use zlib to compress data from original buf and put in output buf 
+                //3) send output buf to server
+                //4) close compression stream
+
+
             }
             
             for (int i = 0; i < ret1; i++) { //for each char we read in the buffer
@@ -268,7 +293,7 @@ int main(int argc, char *argv[]) {
             exit(1);
         }
     }
-    
+
     if (stdin_error) {
         fprintf(stderr, "stdin error: %s\n", strerror(errno));
         exit(1);

@@ -27,41 +27,15 @@ int sock_fd;
 int compress_option;
 int write_to_shell_closed = 0;
 
-void reset_terminal(void);
+void reset(void);
 
 void handle_sigpipe() {
     //Harvest the shell's completion status 
-    reset_terminal();
+    reset();
     exit(0);
 }
 
-void setup_terminal_mode(void) {
-    //save current mode so we can restore it at the end 
-    int error_check = tcgetattr(0, &normal_mode);  
-    if (error_check < 0) {
-        fprintf(stderr, "Error saving up terminal mode: %s\n", strerror(errno));
-        exit(1);
-    }
-    struct termios new_mode = normal_mode;
-    atexit(reset_terminal);
-    //setting terminal to non-cononical, non-echo mode(letters aren't echoed)
-    new_mode.c_iflag = ISTRIP;
-    new_mode.c_oflag = 0; 
-    new_mode.c_lflag = 0;
-    error_check = tcsetattr(0, TCSANOW, &new_mode);
-    if (error_check < 0) {
-        fprintf(stderr, "Error setting up new terminal mode: %s\n", strerror(errno));
-        exit(1);
-    }
-}
-
-void reset_terminal(void) {  //reset to original mode
-    int error_check = tcsetattr(0, TCSANOW, &normal_mode);
-    if (error_check < 0) {
-        fprintf(stderr, "Error restoring terminal mode: %s\n", strerror(errno));
-        exit(1);
-    } 
-    
+void reset(void) {  //reset to original mode
     int shell_status;
     //wait for shell to exit
     waitpid(pid, &shell_status, 0);
@@ -153,6 +127,8 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Server error, specify port number: %s\n", strerror(errno));
         exit(1);
     }
+
+    atexit(reset);
     
     sock_fd  = establish_connection(port_number);
 
