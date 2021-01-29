@@ -22,7 +22,7 @@
 
 struct termios normal_mode;
 int compress_option = 0;
-
+int sock_fd;
 void reset_terminal(void);
 
 void setup_terminal_mode(void) {
@@ -46,6 +46,7 @@ void setup_terminal_mode(void) {
 }
 
 void reset_terminal(void) {  //reset to original mode
+    close(sock_fd);
     int error_check = tcsetattr(0, TCSANOW, &normal_mode);
     if (error_check < 0) {
         fprintf(stderr, "Error restoring terminal mode: %s\n", strerror(errno));
@@ -54,12 +55,52 @@ void reset_terminal(void) {  //reset to original mode
     exit(0);
 }
 
-void read_from_socket(int sock_fd) {
-    
+int read_from_socket(void) {
+    int write_check;
+    char buf[256];
+    ssize_t ret2 = read(sock_fd, buf, sizeof(char)*256);
+    if (ret2 == -1) {  
+        fprintf(stderr, "Error reading from socket: %s\n", strerror(errno));
+        exit(1);
+    }
+    else if (ret2 == 0) { //0 bytes were read in from server. This mean child process should exit
+        return -1;
+    }
+
+    for (int i = 0; i < ret2; i++) {
+        if (buf[i] == 0x4) {  //If a ^D is entered on the terminal, simply pass it through to the server like any other character
+            write_check = write(1, "^D", 2*sizeof(char));
+            if (write_check == -1) {  
+                fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
+                exit(1);
+            }     
+        }
+        else if (buf[i] == '\r' || buf[i] == '\n') {
+            write_check = write(1, "\r\n", 2*sizeof(char));
+            if (write_check == -1) {  
+                fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
+                exit(1);
+            }
+        }
+        else if (buf[i] == 0x3) { //if a ^C is entered on the terminal, simply pass it through to the server like any other character.
+            write_check = write(1, "^C", 2*sizeof(char));
+            if (write_check == -1) {  
+                fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
+                exit(1);
+            }
+        }
+        else {
+            write_check = write(1, &buf[i], sizeof(char));
+            if (write_check == -1) {  
+                fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
+                exit(1);
+            }
+        }
+    }
+    return 0;
 }
 
 int establish_connection(char* host, unsigned int port_num) {
-    int sock_fd;  //file descriptor of socket
     struct sockaddr_in server_address; //for specifying port and address of server for socket
     struct hostent* server;
     //creating socket
@@ -119,14 +160,14 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    setup_terminal_mode();  //setup terminal to non-canonical, no echo mode
+
     if (port_number == -1) {
-        fprintf(stderr, "Client error, specify port number: %s\n", strerror(errno));
+        fprintf(stderr, "Client error, specify port number\n");
         exit(1);
     }
 
-    setup_terminal_mode();  //setup terminal to non-canonical, no echo mode
-
-    int sock_fd = establish_connection("localhost", port_number); //don't need to error check here, I already do it in my function
+    sock_fd = establish_connection("localhost", port_number); //don't need to error check here, I already do it in my function
 
     //Poll blocks and returns when: one set of file descriptors is ready for I/O or a specified time has passed 
     struct pollfd poll_event[2];
@@ -209,86 +250,19 @@ int main(int argc, char *argv[]) {
 
         //Read input from socket
         if (poll_event[1].revents & POLLIN) {
-            char buf[256];
-            ssize_t ret2 = read(sock_fd, buf, sizeof(char)*256);
-            if (ret2 == -1) {  
-                fprintf(stderr, "Error reading from socket: %s\n", strerror(errno));
-                exit(1);
-            }
-            for (int i = 0; i < ret2; i++) {
-                if (buf[i] == 0x4) {  //If a ^D is entered on the terminal, simply pass it through to the server like any other character
-                    write_check = write(1, "^D", 2*sizeof(char));
-                    if (write_check == -1) {  
-                        fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
-                        exit(1);
-                    }     
-                }
-                else if (buf[i] == '\r' || buf[i] == '\n') {
-                    write_check = write(1, "\r\n", 2*sizeof(char));
-                    if (write_check == -1) {  
-                        fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
-                        exit(1);
-                    }
-                }
-                else if (buf[i] == 0x3) { //if a ^C is entered on the terminal, simply pass it through to the server like any other character.
-                    write_check = write(1, "^C", 2*sizeof(char));
-                    if (write_check == -1) {  
-                        fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
-                        exit(1);
-                    }
-                }
-                else {
-                    write_check = write(1, &buf[i], sizeof(char));
-                    if (write_check == -1) {  
-                        fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
-                        exit(1);
-                    }
-                }
+            if (read_from_socket() == -1) {
+                break;
             }
         }
 
         if (poll_event[0].revents & (POLLHUP | POLLERR)) {
+            read_from_socket();
             fprintf(stderr, "stdin error: %s\n", strerror(errno));
             exit(1);
         }
         if (poll_event[1].revents & (POLLHUP | POLLERR)) {  //read every last byte from socket_fd, write to stdout, restore terminal and exit
+            read_from_socket();
             fprintf(stderr, "socket input error: %s\n", strerror(errno));
-            char buf[256];
-            ssize_t ret2 = read(sock_fd, buf, sizeof(char)*256);
-            if (ret2 == -1) {  
-                fprintf(stderr, "Error reading from socket: %s\n", strerror(errno));
-                exit(1);
-            }
-            for (int i = 0; i < ret2; i++) {
-                if (buf[i] == 0x4) {  //If a ^D is entered on the terminal, simply pass it through to the server like any other character
-                    write_check = write(1, "^D", 2*sizeof(char));
-                    if (write_check == -1) {  
-                        fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
-                        exit(1);
-                    }     
-                }
-                else if (buf[i] == '\r' || buf[i] == '\n') {
-                    write_check = write(1, "\r\n", 2*sizeof(char));
-                    if (write_check == -1) {  
-                        fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
-                        exit(1);
-                    }
-                }
-                else if (buf[i] == 0x3) { //if a ^C is entered on the terminal, simply pass it through to the server like any other character.
-                    write_check = write(1, "^C", 2*sizeof(char));
-                    if (write_check == -1) {  
-                        fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
-                        exit(1);
-                    }
-                }
-                else {
-                    write_check = write(1, &buf[i], sizeof(char));
-                    if (write_check == -1) {  
-                        fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
-                        exit(1);
-                    }
-                }
-            }
             exit(1);
         }
     }

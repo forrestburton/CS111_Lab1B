@@ -25,6 +25,7 @@ int pipe_to_server[2];  //from shell
 pid_t pid;
 int sock_fd;
 int compress_option;
+int write_to_shell_closed = 0;
 
 void reset_terminal(void);
 
@@ -123,7 +124,6 @@ int establish_connection(unsigned int port_num) {
 }
 
 int main(int argc, char *argv[]) {
-    printf("Entered main server");
     int c;
     int port_number = -1;
     char* file_name;
@@ -149,14 +149,12 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    if (port_number < 1025) {
-        fprintf(stderr, "Server error, specify port number greater than 1024: %s\n", strerror(errno));
+    if (port_number == -1) {
+        fprintf(stderr, "Server error, specify port number: %s\n", strerror(errno));
         exit(1);
     }
     
-    printf("before connect function serv");
     sock_fd  = establish_connection(port_number);
-    printf("after connect function serv");
 
     int ret1 = pipe(pipe_to_shell);  //parent->child (server->shell)
     int ret2 = pipe(pipe_to_server);  //child->parent (shell->server)
@@ -169,7 +167,6 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
     
-    printf("got inside shell option");
     signal(SIGPIPE, handle_sigpipe);
 
     //stdin is file descriptor 0, stdout is file descripter 1
@@ -267,7 +264,13 @@ int main(int argc, char *argv[]) {
                 
                 for (int i = 0; i < ret1; i++) { //for each char we read in the buffer
                     if (buffer[i] == 0x4) {   
-                        close(pipe_to_shell[1]);
+                        if (!write_to_shell_closed) {
+                            if (close(pipe_to_shell[1]) == -1) { //close writing in pipe to shell 
+                                fprintf(stderr, "Error when closing file descriptor: %s\n", strerror(errno));
+                                exit(1);
+                            }
+                            write_to_shell_closed = 1;
+                        }
                     }
                     else if (buffer[i] == '\r' || buffer[i] == '\n') {
                         write_check = write(pipe_to_shell[1], "\n", sizeof(char));
@@ -307,6 +310,13 @@ int main(int argc, char *argv[]) {
             }
 
             if (poll_event[0].revents & (POLLHUP | POLLERR)) {
+                if (!write_to_shell_closed) {
+                    if (close(pipe_to_shell[1]) == -1) { //close writing in pipe to shell 
+                        fprintf(stderr, "Error when closing file descriptor: %s\n", strerror(errno));
+                        exit(1);
+                    }
+                    write_to_shell_closed = 1;
+                }
                 fprintf(stderr, "stdin error: %s\n", strerror(errno));
                 exit(1);
             }
