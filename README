@@ -15,3 +15,5 @@ How to handle SIGPIPE - https://stackoverflow.com/questions/108183/how-to-preven
 Client Server Socket programming in C - https://www.binarytides.com/server-client-example-c-sockets-linux/
 Figuring out return values of getbyhostname - https://man7.org/linux/man-pages/man3/gethostbyname.3.html
 gethostbyname man page - https://man7.org/linux/man-pages/man3/gethostbyname.3.html
+How to write formatted text to an array of char - https://stackoverflow.com/questions/4627330/difference-between-fprintf-printf-and-sprintf/4628144
+https://stackoverflow.com/questions/3919995/determining-sprintf-buffer-size-whats-the-standard/3923207

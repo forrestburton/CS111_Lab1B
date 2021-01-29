@@ -159,6 +159,11 @@ int main(int argc, char *argv[]) {
                     fprintf(stderr, "Error: specify a valid file\n");
                     exit(1);
                 }
+                int log_fd = creat(file_name, S_IRWXU); //create output file with writing permissions 
+                if (log_fd == -1) {
+                    fprintf(stderr, "Unable to create output file: %s\n", strerror(errno));
+                    exit(1);
+                }
                 break;
             case 'c':
                compress_option = 1;
@@ -246,7 +251,12 @@ int main(int argc, char *argv[]) {
                 deflateEnd(&stream);
 
                 if (log_option) {
-                    
+                    char message[BUF_SIZE];
+                    int num_bytes = sprintf(message, "SENT %d bytes:", BUF_SIZE);
+
+                    write(log_fd, message, num_bytes); //write message
+                    write(log_fd, compress_output, bytes_compressed);  //write compressed output
+                    write(log_fd, "\n", sizeof(char));
                 }
             }
             else {
@@ -301,7 +311,12 @@ int main(int argc, char *argv[]) {
                     }
                 }
                 if (log_option) {
+                    char message[BUF_SIZE];
+                    int num_bytes = sprintf(message, "SENT %d bytes:", ret1);
                     
+                    write(log_fd, message, num_bytes); //write message
+                    write(log_fd, buffer, ret1);  //write compressed output
+                    write(log_fd, "\n", sizeof(char));
                 }
             }
         }
