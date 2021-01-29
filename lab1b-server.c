@@ -124,7 +124,7 @@ int main(int argc, char *argv[]) {
     }
 
     if (port_number == -1) {
-        fprintf(stderr, "Server error, specify port number: %s\n", strerror(errno));
+        fprintf(stderr, "Server error, specify port number\n");
         exit(1);
     }
 

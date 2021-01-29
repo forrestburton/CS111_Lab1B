@@ -25,6 +25,7 @@
 struct termios normal_mode;
 int compress_option = 0;
 int log_option = 0;
+int log_fd;
 int sock_fd;
 int stdin_error = 0;
 void reset_terminal(void);
@@ -159,7 +160,7 @@ int main(int argc, char *argv[]) {
                     fprintf(stderr, "Error: specify a valid file\n");
                     exit(1);
                 }
-                int log_fd = creat(file_name, S_IRWXU); //create output file with writing permissions 
+                log_fd = creat(file_name, S_IRWXU); //create output file with writing permissions 
                 if (log_fd == -1) {
                     fprintf(stderr, "Unable to create output file: %s\n", strerror(errno));
                     exit(1);
@@ -225,10 +226,10 @@ int main(int argc, char *argv[]) {
                 }
 
                 //2) use zlib to compress data from original buf and put in output buf 
-                stream.avail_in = (uInt) BUF_SIZE; //number of bytes read in
+                stream.avail_in = BUF_SIZE; //number of bytes read in
                 stream.next_in = (Bytef *) buffer;  //next input byte
                 stream.avail_out = BUF_SIZE; //remaining free space at next_out
-                stream.next_out = compress_output; //next output byte
+                stream.next_out = (Bytef *) compress_output; //next output byte
                 
                 int deflate_ret;
                 while (stream.avail_in > 0) {
@@ -312,7 +313,7 @@ int main(int argc, char *argv[]) {
                 }
                 if (log_option) {
                     char message[BUF_SIZE];
-                    int num_bytes = sprintf(message, "SENT %d bytes:", ret1);
+                    int num_bytes = sprintf(message, "SENT %ld bytes:", ret1);
                     
                     write(log_fd, message, num_bytes); //write message
                     write(log_fd, buffer, ret1);  //write compressed output
