@@ -23,6 +23,7 @@
 struct termios normal_mode;
 int compress_option = 0;
 int sock_fd;
+int stdin_error = 0;
 void reset_terminal(void);
 
 void setup_terminal_mode(void) {
@@ -256,15 +257,21 @@ int main(int argc, char *argv[]) {
         }
 
         if (poll_event[0].revents & (POLLHUP | POLLERR)) {
-            read_from_socket();
-            fprintf(stderr, "stdin error: %s\n", strerror(errno));
-            exit(1);
+            if (read_from_socket() == -1) {
+                stdin_error = 1;
+                break;
+            }
         }
         if (poll_event[1].revents & (POLLHUP | POLLERR)) {  //read every last byte from socket_fd, write to stdout, restore terminal and exit
             read_from_socket();
             fprintf(stderr, "socket input error: %s\n", strerror(errno));
             exit(1);
         }
+    }
+    
+    if (stdin_error) {
+        fprintf(stderr, "stdin error: %s\n", strerror(errno));
+        exit(1);
     }
     exit(0);   
 }
