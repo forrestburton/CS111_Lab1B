@@ -93,9 +93,6 @@ int establish_connection(unsigned int port_num) {
         fprintf(stderr, "Error accepting client connection: %s\n", strerror(errno));
         exit(1);
     }
-    else {
-        printf("Succesfully Connected");
-    }
     return fd;
 }
 
@@ -200,7 +197,6 @@ int main(int argc, char *argv[]) {
         }
     }
     else if (pid > 0) {  //parent process will have return value of > 0
-        printf("made it inside parent process");
         //close ends of pipe we aren't using
         if (close(pipe_to_shell[0]) == -1) { //closing read for to shell
             fprintf(stderr, "Error when closing file descriptor: %s\n", strerror(errno));
