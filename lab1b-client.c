@@ -72,33 +72,110 @@ int read_from_socket(void) {
         return -1;
     }
 
-    for (int i = 0; i < ret2; i++) {
-        if (buf[i] == 0x4) {  //If a ^D is entered on the terminal, simply pass it through to the server like any other character
-            write_check = write(1, "^D", 2*sizeof(char));
-            if (write_check == -1) {  
-                fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
-                exit(1);
-            }     
+    if (log_option) {
+        char message[BUF_SIZE];
+        int num_bytes = sprintf(message, "RECEIVED %ld bytes:", ret2);
+
+        write(log_fd, message, num_bytes); //write message
+        write(log_fd, buf, ret2);  //write compressed output
+        write(log_fd, "\n", sizeof(char));
+    }
+
+    if (compress_option) {  //decompression
+        char decompress_output[BUF_SIZE];
+
+        //1) initialize a compression stream
+        z_stream stream;
+        stream.zalloc = Z_NULL;  //set to Z_NULL for default routines
+        stream.zfree = Z_NULL;
+        stream.opaque = Z_NULL;
+        int z_result = inflateInit(&stream);  //(ptr to struct, default compression level)
+        if (z_result != Z_OK) {
+            fprintf(stderr, "Client error, failed to inflate stream for compression: %s\n", strerror(errno));
+            exit(1);
         }
-        else if (buf[i] == '\r' || buf[i] == '\n') {
-            write_check = write(1, "\r\n", 2*sizeof(char));
-            if (write_check == -1) {  
-                fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
+
+        //2) use zlib to decompress data from original buf and put in output buf 
+        stream.avail_in = (uInt) ret2; //number of bytes read in
+        stream.next_in = (Bytef *) buf;  //next input byte
+        stream.avail_out = BUF_SIZE; //remaining free space at next_out
+        stream.next_out = (Bytef *) decompress_output; //next output byte
+        
+        int inflate_ret;
+        while (stream.avail_in > 0) {
+            inflate_ret = inflate(&stream, Z_SYNC_FLUSH); //Z_SYNC_FLUSH for independent messages
+            if (inflate_ret == -1 ) {
+                fprintf(stderr, "Error inflating: %s\n", strerror(errno));
                 exit(1);
             }
         }
-        else if (buf[i] == 0x3) { //if a ^C is entered on the terminal, simply pass it through to the server like any other character.
-            write_check = write(1, "^C", 2*sizeof(char));
-            if (write_check == -1) {  
-                fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
-                exit(1);
+
+        int bytes_decompressed = BUF_SIZE - stream.avail_out;
+
+        //3) write decrompressed output to stdout 
+        for (int i = 0; i < bytes_decompressed; i++) {
+            if (decompress_output[i] == 0x4) {  //If a ^D is entered on the terminal, simply pass it through to the server like any other character
+                write_check = write(1, "^D", 2*sizeof(char));
+                if (write_check == -1) {  
+                    fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
+                    exit(1);
+                }     
+            }
+            else if (decompress_output[i] == '\r' || buf[i] == '\n') {
+                write_check = write(1, "\r\n", 2*sizeof(char));
+                if (write_check == -1) {  
+                    fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
+                    exit(1);
+                }
+            }
+            else if (decompress_output[i] == 0x3) { //if a ^C is entered on the terminal, simply pass it through to the server like any other character.
+                write_check = write(1, "^C", 2*sizeof(char));
+                if (write_check == -1) {  
+                    fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
+                    exit(1);
+                }
+            }
+            else {
+                write_check = write(1, &decompress_output[i], sizeof(char));
+                if (write_check == -1) {  
+                    fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
+                    exit(1);
+                }
             }
         }
-        else {
-            write_check = write(1, &buf[i], sizeof(char));
-            if (write_check == -1) {  
-                fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
-                exit(1);
+
+        //4) close compression stream
+        inflateEnd(&stream);
+    }
+    else { 
+        for (int i = 0; i < ret2; i++) {
+            if (buf[i] == 0x4) {  //If a ^D is entered on the terminal, simply pass it through to the server like any other character
+                write_check = write(1, "^D", 2*sizeof(char));
+                if (write_check == -1) {  
+                    fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
+                    exit(1);
+                }     
+            }
+            else if (buf[i] == '\r' || buf[i] == '\n') {
+                write_check = write(1, "\r\n", 2*sizeof(char));
+                if (write_check == -1) {  
+                    fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
+                    exit(1);
+                }
+            }
+            else if (buf[i] == 0x3) { //if a ^C is entered on the terminal, simply pass it through to the server like any other character.
+                write_check = write(1, "^C", 2*sizeof(char));
+                if (write_check == -1) {  
+                    fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
+                    exit(1);
+                }
+            }
+            else {
+                write_check = write(1, &buf[i], sizeof(char));
+                if (write_check == -1) {  
+                    fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
+                    exit(1);
+                }
             }
         }
     }
@@ -211,7 +288,7 @@ int main(int argc, char *argv[]) {
                 exit(1);
             }
 
-            if (compress_option) { //--compress option 
+            if (compress_option) { //compression
                 char compress_output[BUF_SIZE];
 
                 //1) initialize a compression stream
@@ -268,7 +345,7 @@ int main(int argc, char *argv[]) {
                             fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
                             exit(1);
                         }     
-                        write_check = write(sock_fd, "^D", 2*sizeof(char));
+                        write_check = write(sock_fd, &buffer[i], 2*sizeof(char));
                         if (write_check == -1) {  
                             fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
                             exit(1);
@@ -292,7 +369,7 @@ int main(int argc, char *argv[]) {
                             fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
                             exit(1);
                         }
-                        write_check = write(sock_fd, "^C", 2*sizeof(char));
+                        write_check = write(sock_fd, &buffer[i], 2*sizeof(char));
                         if (write_check == -1) {  
                             fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
                             exit(1);

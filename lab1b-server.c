@@ -19,6 +19,8 @@
 #include <poll.h>
 #include <zlib.h>
 
+#define BUF_SIZE 256
+
 struct termios normal_mode;
 int pipe_to_shell[2];  //to shell. pipe[0] is read end of pipe. pipe[1] is write end of pipe
 int pipe_to_server[2];  //from shell
@@ -100,11 +102,9 @@ int establish_connection(unsigned int port_num) {
 int main(int argc, char *argv[]) {
     int c;
     int port_number = -1;
-    char* file_name;
     while(1) {
         int option_index = 0;
         static struct option long_options[] = {
-            {"shell", no_argument, 0, 's' },
             {"port", required_argument, 0, 'p' },
             {"compress", no_argument, 0, 'c' },
             {0,     0,             0, 0 }};
@@ -118,7 +118,7 @@ int main(int argc, char *argv[]) {
                 compress_option = 1;
                 break;
             default:
-                printf("Incorrect usage: accepted options are: [--log=filename --port=portnum --compress]\n");
+                printf("Incorrect usage: accepted options are: [--port=portnum --compress]\n");
                 exit(1);
         }
     }
@@ -153,7 +153,6 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
     else if (pid == 0) {  //child process will have return value of 0. Output is by default nondeterministic. We don't know order of execution so we need poll
-        printf("made it inside child process");
 
         //close ends of pipe we aren't using
         if (close(pipe_to_shell[1]) == -1) { //close writing in pipe to shell 
@@ -237,32 +236,97 @@ int main(int argc, char *argv[]) {
                     fprintf(stderr, "Error reading from standard input: %s\n", strerror(errno));
                     exit(1);
                 }
-                
-                for (int i = 0; i < ret1; i++) { //for each char we read in the buffer
-                    if (buffer[i] == 0x4) {   
-                        if (!write_to_shell_closed) {
-                            if (close(pipe_to_shell[1]) == -1) { //close writing in pipe to shell 
-                                fprintf(stderr, "Error when closing file descriptor: %s\n", strerror(errno));
+
+                if (compress_option) {  //decompression
+                    char decompress_output[BUF_SIZE];
+
+                    //1) initialize a compression stream
+                    z_stream stream;
+                    stream.zalloc = Z_NULL;  //set to Z_NULL for default routines
+                    stream.zfree = Z_NULL;
+                    stream.opaque = Z_NULL;
+                    int z_result = inflateInit(&stream);  //(ptr to struct, default compression level)
+                    if (z_result != Z_OK) {
+                        fprintf(stderr, "Client error, failed to inflate stream for compression: %s\n", strerror(errno));
+                        exit(1);
+                    }
+
+                    //2) use zlib to decompress data from original buf and put in output buf 
+                    stream.avail_in = (uInt) ret1; //number of bytes read in
+                    stream.next_in = (Bytef *) buffer;  //next input byte
+                    stream.avail_out = BUF_SIZE; //remaining free space at next_out
+                    stream.next_out = (Bytef *) decompress_output; //next output byte
+                    
+                    int inflate_ret;
+                    while (stream.avail_in > 0) {
+                        inflate_ret = inflate(&stream, Z_SYNC_FLUSH); //Z_SYNC_FLUSH for independent messages
+                        if (inflate_ret == -1 ) {
+                            fprintf(stderr, "Error inflating: %s\n", strerror(errno));
+                            exit(1);
+                        }
+                    }
+
+                    int bytes_decompressed = BUF_SIZE - stream.avail_out;
+
+                    //3) write decrompressed output to stdout 
+                    for (int i = 0; i < bytes_decompressed; i++) { //for each char we read in the buffer
+                        if (decompress_output[i] == 0x4) {   
+                            if (!write_to_shell_closed) {
+                                if (close(pipe_to_shell[1]) == -1) { //close writing in pipe to shell 
+                                    fprintf(stderr, "Error when closing file descriptor: %s\n", strerror(errno));
+                                    exit(1);
+                                }
+                                write_to_shell_closed = 1;
+                            }
+                        }
+                        else if (decompress_output[i] == '\r' || decompress_output[i] == '\n') {
+                            write_check = write(pipe_to_shell[1], "\n", sizeof(char));
+                            if (write_check == -1) {  
+                                fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
                                 exit(1);
                             }
-                            write_to_shell_closed = 1;
+                        }
+                        else if (decompress_output[i] == 0x3) {
+                            kill(pid, SIGINT); //kill child process
+                        }
+                        else {
+                            write_check = write(pipe_to_shell[1], &decompress_output[i], sizeof(char)); //write to shell 
+                            if (write_check == -1) {  
+                                fprintf(stderr, "Error writing to shell Line 295: %s\n", strerror(errno));
+                                exit(1);
+                            }
                         }
                     }
-                    else if (buffer[i] == '\r' || buffer[i] == '\n') {
-                        write_check = write(pipe_to_shell[1], "\n", sizeof(char));
-                        if (write_check == -1) {  
-                            fprintf(stderr, "Error writing to standard output 2: %s\n", strerror(errno));
-                            exit(1);
+                    //4) close compression stream
+                    inflateEnd(&stream);
+                }
+                else {
+                    for (int i = 0; i < ret1; i++) { //for each char we read in the buffer
+                        if (buffer[i] == 0x4) {   
+                            if (!write_to_shell_closed) {
+                                if (close(pipe_to_shell[1]) == -1) { //close writing in pipe to shell 
+                                    fprintf(stderr, "Error when closing file descriptor: %s\n", strerror(errno));
+                                    exit(1);
+                                }
+                                write_to_shell_closed = 1;
+                            }
                         }
-                    }
-                    else if (buffer[i] == 0x3) {
-                        kill(pid, SIGINT); //kill child process
-                    }
-                    else {
-                        write_check = write(pipe_to_shell[1], &buffer[i], sizeof(char)); //write to shell 
-                        if (write_check == -1) {  
-                            fprintf(stderr, "Error writing to shell Line 256: %s\n", strerror(errno));
-                            exit(1);
+                        else if (buffer[i] == '\r' || buffer[i] == '\n') {
+                            write_check = write(pipe_to_shell[1], "\n", sizeof(char));
+                            if (write_check == -1) {  
+                                fprintf(stderr, "Error writing to standard output 2: %s\n", strerror(errno));
+                                exit(1);
+                            }
+                        }
+                        else if (buffer[i] == 0x3) {
+                            kill(pid, SIGINT); //kill child process
+                        }
+                        else {
+                            write_check = write(pipe_to_shell[1], &buffer[i], sizeof(char)); //write to shell 
+                            if (write_check == -1) {  
+                                fprintf(stderr, "Error writing to shell Line 256: %s\n", strerror(errno));
+                                exit(1);
+                            }
                         }
                     }
                 }
@@ -276,12 +340,54 @@ int main(int argc, char *argv[]) {
                     fprintf(stderr, "Error reading from shell: %s\n", strerror(errno));
                     exit(1);
                 }
-                for (int i = 0; i < ret2; i++) {
-                    write_check = write(sock_fd, &buf[i], sizeof(char));
-                    if (write_check == -1) {  
-                        fprintf(stderr, "Error writing to standard output 6: %s\n", strerror(errno));
+                if (compress_option) { //compression
+                    char compress_output[BUF_SIZE];
+
+                    //1) initialize a compression stream
+                    z_stream stream;
+                    stream.zalloc = Z_NULL;  //set to Z_NULL for default routines
+                    stream.zfree = Z_NULL;
+                    stream.opaque = Z_NULL;
+                    int z_result = deflateInit(&stream, Z_DEFAULT_COMPRESSION);  //(ptr to struct, default compression level)
+                    if (z_result != Z_OK) {
+                        fprintf(stderr, "Client error, failed to deflate stream for compression: %s\n", strerror(errno));
                         exit(1);
-                    }    
+                    }
+
+                    //2) use zlib to compress data from original buf and put in output buf 
+                    stream.avail_in = ret2; //number of bytes read in
+                    stream.next_in = (Bytef *) buf;  //next input byte
+                    stream.avail_out = BUF_SIZE; //remaining free space at next_out
+                    stream.next_out = (Bytef *) compress_output; //next output byte
+                    
+                    int deflate_ret;
+                    while (stream.avail_in > 0) {
+                        deflate_ret = deflate(&stream, Z_SYNC_FLUSH); //Z_SYNC_FLUSH for independent messages
+                        if (deflate_ret == -1 ) {
+                            fprintf(stderr, "Error deflating: %s\n", strerror(errno));
+                            exit(1);
+                        }
+                    }
+
+                    int bytes_compressed = BUF_SIZE - stream.avail_out;
+
+                    //3) send output buf to client
+                    if (write(sock_fd, compress_output, bytes_compressed) == -1) {
+                        fprintf(stderr, "Client error writing compressed output: %s\n", strerror(errno));
+                        exit(1);
+                    }
+
+                    //4) close compression stream
+                    deflateEnd(&stream);
+                }
+                else {
+                    for (int i = 0; i < ret2; i++) {
+                        write_check = write(sock_fd, &buf[i], sizeof(char));
+                        if (write_check == -1) {  
+                            fprintf(stderr, "Error writing to standard output 6: %s\n", strerror(errno));
+                            exit(1);
+                        }    
+                    }
                 }
             }
 
