@@ -34,6 +34,7 @@ void reset(void);
 void handle_sigpipe() {
     //Harvest the shell's completion status 
     reset();
+    exit(0);
 }
 
 void reset(void) {  //reset to original mode
@@ -411,6 +412,7 @@ int main(int argc, char *argv[]) {
                         exit(1);
                     }    
                 }
+                exit(1);
             }
         } 
     }
