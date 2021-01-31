@@ -74,7 +74,7 @@ int read_from_socket(void) {
 
     if (log_option) {
         char message[BUF_SIZE];
-        int num_bytes = sprintf(message, "RECEIVED %ld bytes:", ret2);
+        int num_bytes = sprintf(message, "RECEIVED %ld bytes: ", ret2);
 
         write(log_fd, message, num_bytes); //write message
         write(log_fd, buf, ret2);  //write compressed output
@@ -330,7 +330,7 @@ int main(int argc, char *argv[]) {
 
                 if (log_option) {
                     char message[BUF_SIZE];
-                    int num_bytes = sprintf(message, "SENT %d bytes:", BUF_SIZE);
+                    int num_bytes = sprintf(message, "SENT %d bytes:", bytes_compressed);
 
                     write(log_fd, message, num_bytes); //write message
                     write(log_fd, compress_output, bytes_compressed);  //write compressed output
@@ -390,7 +390,7 @@ int main(int argc, char *argv[]) {
                 }
                 if (log_option) {
                     char message[BUF_SIZE];
-                    int num_bytes = sprintf(message, "SENT %ld bytes:", ret1);
+                    int num_bytes = sprintf(message, "SENT %ld bytes: ", ret1);
                     
                     write(log_fd, message, num_bytes); //write message
                     write(log_fd, buffer, ret1);  //write compressed output

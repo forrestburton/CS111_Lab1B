@@ -412,8 +412,6 @@ int main(int argc, char *argv[]) {
                         exit(1);
                     }    
                 }
-                fprintf(stderr, "shell input error: %s\n", strerror(errno));
-                exit(1);
             }
         } 
     }
