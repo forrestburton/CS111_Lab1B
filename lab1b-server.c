@@ -310,7 +310,7 @@ int main(int argc, char *argv[]) {
                         else if (buffer[i] == '\r' || buffer[i] == '\n') {
                             write_check = write(pipe_to_shell[1], "\n", sizeof(char));
                             if (write_check == -1) {  
-                                fprintf(stderr, "Error writing to standard output 2: %s\n", strerror(errno));
+                                fprintf(stderr, "Error writing to standard output: %s\n", strerror(errno));
                                 exit(1);
                             }
                         }
@@ -320,7 +320,7 @@ int main(int argc, char *argv[]) {
                         else {
                             write_check = write(pipe_to_shell[1], &buffer[i], sizeof(char)); //write to shell 
                             if (write_check == -1) {  
-                                fprintf(stderr, "Error writing to shell Line 256: %s\n", strerror(errno));
+                                fprintf(stderr, "Error writing to shell: %s\n", strerror(errno));
                                 exit(1);
                             }
                         }

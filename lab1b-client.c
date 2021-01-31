@@ -303,7 +303,7 @@ int main(int argc, char *argv[]) {
                 }
 
                 //2) use zlib to compress data from original buf and put in output buf 
-                stream.avail_in = BUF_SIZE; //number of bytes read in
+                stream.avail_in = ret1; //number of bytes read in
                 stream.next_in = (Bytef *) buffer;  //next input byte
                 stream.avail_out = BUF_SIZE; //remaining free space at next_out
                 stream.next_out = (Bytef *) compress_output; //next output byte
@@ -318,6 +318,7 @@ int main(int argc, char *argv[]) {
                 }
 
                 int bytes_compressed = BUF_SIZE - stream.avail_out;
+                //printf("%d", bytes_compressed);
 
                 //3) send output buf to server
                 if (write(sock_fd, compress_output, bytes_compressed) == -1) {
